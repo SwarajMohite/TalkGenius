@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Group Discussion Room</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="left">
+      <strong id="roomLabel"></strong>
+    </div>
+    <div class="right">
+      <button id="toggleCam">Toggle Cam</button>
+      <button id="toggleMic">Toggle Mic</button>
+      <button id="leave">Leave</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <div id="videos" class="videos">
+      <!-- Ava tile (local visual presence) -->
+      <div class="tile ai-tile" id="avaTile">
+        <div class="ai-avatar" aria-hidden="true"></div>
+        <div class="label">Ava (AI)</div>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="tabs">
+        <button class="tab active" data-tab="chat">Chat</button>
+        <button class="tab" data-tab="ai">Ask AI</button>
+      </div>
+
+      <div id="chat" class="panel">
+        <div id="chatLog" class="log"></div>
+        <div class="row">
+          <input id="chatInput" placeholder="Message…" />
+          <button id="sendChat">Send</button>
+        </div>
+      </div>
+
+      <div id="ai" class="panel hidden">
+        <div class="row">
+          <textarea id="aiPrompt" rows="4" placeholder="Ask for tips/advice (e.g., 'How can we improve turn-taking?')"></textarea>
+        </div>
+        <div class="row wrap">
+          <button id="askAi">Ask Ava</button>
+          <button id="micToAI" title="Speak to Ava">🎙️ Speak to Ava</button>
+          <label class="inline">
+            <input type="checkbox" id="avaVoiceToggle" checked />
+            Ava voice on
+          </label>
+        </div>
+        <div id="sttStatus" class="muted small" aria-live="polite"></div>
+        <pre id="aiOut" class="aiOut"></pre>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module" src="utils.js"></script>
+  <script type="module" src="client.js"></script>
+  <script type="module" src="ai.js"></script>
+  <script>
+    // Simple tabs
+    document.querySelectorAll('.tab').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p=>p.classList.add('hidden'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.remove('hidden');
+      });
+    });
+  </script>
+</body>
+</html>
