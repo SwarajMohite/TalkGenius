@@ -22,7 +22,7 @@ Whether it’s a mock interview, debate, or personal speaking practice, TalkGeni
 <br>
 <div align="center">
 <!-- Logo Image -->
-  <img src="TalkGenius_Logo.png" alt="TalkGenius Logo" width="180px">
+  <img src="Pro_Logo.png" alt="TalkGenius Logo" width="180px">
 </div>
 
 ---
