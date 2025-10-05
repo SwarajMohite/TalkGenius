@@ -19,6 +19,12 @@ Imagine a virtual coach who listens, observes, and gives you instant, meaningful
 That is TalkGenius. Our project is designed to help individuals **speak smarter, perform better, and communicate confidently** using the power of **AI and real-time feedback**.  
 Whether it’s a mock interview, debate, or personal speaking practice, TalkGenius listens, observes, analyzes, and helps you improve instantly.
 
+<br>
+<div align="center">
+<!-- Logo Image -->
+  <img src="TalkGenius_Logo.png" alt="TalkGenius Logo" width="180px">
+</div>
+
 ---
 
 ## Features 
