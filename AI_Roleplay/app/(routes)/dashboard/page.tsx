@@ -27,7 +27,8 @@ import {
   Mic,
   Video,
   User,
-  ArrowRight
+  ArrowRight,
+  X
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -97,8 +98,9 @@ export default function Dashboard() {
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
 
-  // Enhanced real-time monitoring - KEEPING ALL ORIGINAL FUNCTIONALITY
+  // FIXED: Single useEffect hook - removed nested useEffect
   useEffect(() => {
     const loadInterviewHistory = () => {
       try {
@@ -109,60 +111,73 @@ export default function Dashboard() {
         
         if (interviewHistory) {
           try {
-            history = JSON.parse(interviewHistory);
+            const parsedHistory = JSON.parse(interviewHistory);
+            // Validate and clean the history data
+            history = parsedHistory.filter((assessment: InterviewHistory) => {
+              // Ensure each assessment has required fields
+              return assessment.id && 
+                     assessment.jobTitle && 
+                     assessment.date && 
+                     assessment.totalScore !== undefined;
+            });
           } catch (e) {
             console.error('Error parsing interview history:', e);
             history = [];
           }
         }
         
-        // Process new completed interview
+        // Process new completed interview with validation
         if (completedInterview) {
           try {
             const newInterview: InterviewHistory = JSON.parse(completedInterview);
             
-            // Ensure the interview has all required fields
+            // FIXED: Validate and complete missing fields
             if (!newInterview.id) {
               newInterview.id = `assessment-${Date.now()}`;
             }
             if (!newInterview.date) {
               newInterview.date = new Date().toISOString();
             }
-            if (!newInterview.totalScore && newInterview.answers && newInterview.answers.length > 0) {
-              const avgScore = newInterview.answers.reduce((sum: number, answer: any) => 
-                sum + (answer.score || 0), 0) / newInterview.answers.length;
-              newInterview.totalScore = Math.round(avgScore);
+            if (!newInterview.jobTitle) {
+              newInterview.jobTitle = newInterview.profile?.jobTitle || 'Talkgenious AI Assessment';
             }
-            if (!newInterview.duration && newInterview.startTime && newInterview.endTime) {
-              const start = new Date(newInterview.startTime).getTime();
-              const end = new Date(newInterview.endTime).getTime();
-              newInterview.duration = Math.round((end - start) / 1000);
+            if (newInterview.totalScore === undefined || newInterview.totalScore === null) {
+              // Calculate score from answers if missing
+              if (newInterview.answers && newInterview.answers.length > 0) {
+                const validScores = newInterview.answers
+                  .filter((answer: any) => answer.score !== undefined && answer.score !== null)
+                  .map((answer: any) => answer.score);
+                
+                if (validScores.length > 0) {
+                  const avgScore = validScores.reduce((sum: number, score: number) => sum + score, 0) / validScores.length;
+                  newInterview.totalScore = Math.round(avgScore);
+                } else {
+                  newInterview.totalScore = 0;
+                }
+              } else {
+                newInterview.totalScore = 0;
+              }
+            }
+            if (!newInterview.duration || newInterview.duration === 0) {
+              // Calculate duration if missing
+              if (newInterview.startTime && newInterview.endTime) {
+                const start = new Date(newInterview.startTime).getTime();
+                const end = new Date(newInterview.endTime).getTime();
+                newInterview.duration = Math.round((end - start) / 1000);
+              } else {
+                newInterview.duration = 300; // Default 5 minutes
+              }
             }
             
-            // Auto-detect assessment type
-            if (!newInterview.assessmentType) {
-              newInterview.assessmentType = detectAssessmentType(newInterview);
-            }
-            
-            // Add summary if not present
-            if (!newInterview.summary && newInterview.answers && newInterview.answers.length > 0) {
-              const lastAnswer = newInterview.answers[newInterview.answers.length - 1];
-              newInterview.summary = {
-                strengths: lastAnswer.aiEvaluation?.strengths || ['Good communication skills'],
-                improvements: lastAnswer.aiEvaluation?.improvements || ['Could use more specific examples'],
-                overallFeedback: lastAnswer.aiEvaluation?.detailedFeedback || 'Solid performance with room for improvement'
-              };
-            }
-            
-            // Add to beginning of history (most recent first)
+            // Add to beginning of history
             history = [newInterview, ...history];
             
-            // Save updated history and remove completed interview
+            // Save updated history
             localStorage.setItem('interviewHistory', JSON.stringify(history));
             localStorage.removeItem('completedInterview');
             localStorage.removeItem('activeInterview');
             
-            console.log('🎉 New assessment added to history:', newInterview);
+            console.log('✅ New assessment added to history:', newInterview);
           } catch (e) {
             console.error('Error processing completed interview:', e);
           }
@@ -178,23 +193,12 @@ export default function Dashboard() {
       }
     };
 
-    // Load immediately
+    // Load immediately and set up listeners
     loadInterviewHistory();
-
-    // Set up storage event listener for cross-tab updates
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'completedInterview' || e.key === 'interviewHistory' || e.key === 'interviewUpdated') {
-        loadInterviewHistory();
-      }
-    };
-
-    // Set up interval for checking updates
-    const interval = setInterval(loadInterviewHistory, 1000);
-
-    // Listen for custom events from active interview page
-    const handleInterviewComplete = () => {
-      loadInterviewHistory();
-    };
+    
+    const interval = setInterval(loadInterviewHistory, 2000);
+    const handleStorageChange = () => loadInterviewHistory();
+    const handleInterviewComplete = () => loadInterviewHistory();
 
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('interviewCompleted', handleInterviewComplete);
@@ -204,265 +208,99 @@ export default function Dashboard() {
       window.removeEventListener('interviewCompleted', handleInterviewComplete);
       clearInterval(interval);
     };
-  }, [refreshTrigger]);
+  }, [refreshTrigger]); // Only dependency is refreshTrigger
 
-  // Fix the detectAssessmentType function
-const detectAssessmentType = (interview: InterviewHistory): InterviewHistory['assessmentType'] => {
-  const jobTitle = interview.jobTitle?.toLowerCase() || '';
-  const questions = interview.questions || [];
-  
-  // Check for academic/viva first
-  if (jobTitle.includes('academic') || jobTitle.includes('viva') || jobTitle.includes('thesis') || 
-      jobTitle.includes('research') || jobTitle.includes('subject') || jobTitle.includes('exam')) {
-    return 'academic-viva';
-  }
-  
-  // Check for technical interviews specifically
-  if (jobTitle.includes('technical') || 
-      jobTitle.includes('developer') || 
-      jobTitle.includes('engineer') ||
-      jobTitle.includes('programming') ||
-      jobTitle.includes('coding') ||
-      questions.some(q => 
-        q.question.toLowerCase().includes('technical') ||
-        q.question.toLowerCase().includes('code') ||
-        q.question.toLowerCase().includes('programming') ||
-        q.question.toLowerCase().includes('algorithm') ||
-        q.question.toLowerCase().includes('database') ||
-        q.question.toLowerCase().includes('software') ||
-        q.type === 'technical'
-      )) {
-    return 'interview'; // Technical interviews are still 'interview' type
-  }
-  
-  // Check for communication tests
-  if (jobTitle.includes('communication') || jobTitle.includes('speaking') || jobTitle.includes('language') ||
-      questions.some(q => 
-        q.question.toLowerCase().includes('communicate') || 
-        q.question.toLowerCase().includes('explain') ||
-        q.question.toLowerCase().includes('describe') ||
-        q.question.toLowerCase().includes('presentation') ||
-        q.question.toLowerCase().includes('speaking')
-      )) {
-    return 'communication-test';
-  }
-  
-  if (jobTitle.includes('knowledge') || jobTitle.includes('test') || jobTitle.includes('quiz') ||
-      questions.some(q => q.type === 'knowledge' || q.type === 'domain-specific')) {
-    return 'knowledge-assessment';
-  }
-  
-  if (jobTitle.includes('confidence') || jobTitle.includes('personal') || jobTitle.includes('development') ||
-      questions.some(q => q.type === 'behavioral' || q.question.toLowerCase().includes('confident'))) {
-    return 'confidence-building';
-  }
-  
-  if (jobTitle.includes('general') || jobTitle.includes('practice') || jobTitle.includes('basic')) {
-    return 'general-practice';
-  }
-  
-  return 'interview';
-};
-
-// Enhanced score calculation in the loadInterviewHistory function
-const loadInterviewHistory = () => {
-  try {
-    const completedInterview = localStorage.getItem('completedInterview');
-    const interviewHistory = localStorage.getItem('interviewHistory');
-    
-    let history: InterviewHistory[] = [];
-    
-    if (interviewHistory) {
-      try {
-        history = JSON.parse(interviewHistory);
-      } catch (e) {
-        console.error('Error parsing interview history:', e);
-        history = [];
-      }
+  // FIXED: Enhanced statistics calculation
+  const calculateStatistics = (history: InterviewHistory[]) => {
+    if (history.length === 0) {
+      setStats({
+        averageScore: 0,
+        totalAssessments: 0,
+        totalPracticeTime: 0,
+        streak: 0,
+        improvementAreas: [],
+        bestScore: 0,
+        recentTrend: 'stable',
+        assessmentTypes: {
+          interview: 0,
+          academicViva: 0,
+          communicationTest: 0,
+          knowledgeAssessment: 0,
+          confidenceBuilding: 0,
+          generalPractice: 0
+        },
+        todaySessions: 0,
+        weeklyProgress: 0
+      });
+      return;
     }
     
-    // Process new completed interview
-    if (completedInterview) {
-      try {
-        const newInterview: InterviewHistory = JSON.parse(completedInterview);
-        
-        // Ensure the interview has all required fields
-        if (!newInterview.id) {
-          newInterview.id = `assessment-${Date.now()}`;
-        }
-        if (!newInterview.date) {
-          newInterview.date = new Date().toISOString();
-        }
-        
-        // IMPROVED SCORE CALCULATION
-        if (!newInterview.totalScore && newInterview.answers && newInterview.answers.length > 0) {
-          const validScores = newInterview.answers
-            .filter((answer: any) => answer.score !== undefined && answer.score !== null)
-            .map((answer: any) => answer.score);
-          
-          if (validScores.length > 0) {
-            const avgScore = validScores.reduce((sum: number, score: number) => sum + score, 0) / validScores.length;
-            newInterview.totalScore = Math.round(avgScore);
-          } else {
-            newInterview.totalScore = 0; // Default score if no valid scores
-          }
-        } else if (!newInterview.totalScore) {
-          newInterview.totalScore = 0; // Default score if no answers
-        }
-        
-        if (!newInterview.duration && newInterview.startTime && newInterview.endTime) {
-          const start = new Date(newInterview.startTime).getTime();
-          const end = new Date(newInterview.endTime).getTime();
-          newInterview.duration = Math.round((end - start) / 1000);
-        }
-        
-        // Auto-detect assessment type with improved logic
-        if (!newInterview.assessmentType) {
-          newInterview.assessmentType = detectAssessmentType(newInterview);
-        }
-        
-        // Add summary if not present
-        if (!newInterview.summary && newInterview.answers && newInterview.answers.length > 0) {
-          const validAnswers = newInterview.answers.filter((answer: any) => answer.aiEvaluation);
-          if (validAnswers.length > 0) {
-            const lastAnswer = validAnswers[validAnswers.length - 1];
-            newInterview.summary = {
-              strengths: lastAnswer.aiEvaluation?.strengths || ['Good technical knowledge'],
-              improvements: lastAnswer.aiEvaluation?.improvements || ['Could provide more detailed explanations'],
-              overallFeedback: lastAnswer.aiEvaluation?.detailedFeedback || 'Solid technical performance with room for improvement'
-            };
-          } else {
-            newInterview.summary = {
-              strengths: ['Good technical knowledge'],
-              improvements: ['Could provide more detailed explanations'],
-              overallFeedback: 'Solid technical performance with room for improvement'
-            };
-          }
-        }
-        
-        // Add to beginning of history (most recent first)
-        history = [newInterview, ...history];
-        
-        // Save updated history and remove completed interview
-        localStorage.setItem('interviewHistory', JSON.stringify(history));
-        localStorage.removeItem('completedInterview');
-        localStorage.removeItem('activeInterview');
-        
-        console.log('🎉 New assessment added to history:', newInterview);
-      } catch (e) {
-        console.error('Error processing completed interview:', e);
-      }
-    }
-    
-    setInterviewHistory(history);
-    calculateStatistics(history);
-    
-  } catch (error) {
-    console.error('Error loading interview history:', error);
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-// Improved statistics calculation
-const calculateStatistics = (history: InterviewHistory[]) => {
-  if (history.length === 0) {
-    setStats({
-      averageScore: 0,
-      totalAssessments: 0,
-      totalPracticeTime: 0,
-      streak: 0,
-      improvementAreas: [],
-      bestScore: 0,
-      recentTrend: 'stable',
-      assessmentTypes: {
-        interview: 0,
-        academicViva: 0,
-        communicationTest: 0,
-        knowledgeAssessment: 0,
-        confidenceBuilding: 0,
-        generalPractice: 0
-      },
-      todaySessions: 0,
-      weeklyProgress: 0
+    // FIXED: Filter and validate assessments properly
+    const validAssessments = history.filter(assessment => {
+      // Ensure assessment has valid score and data
+      const hasValidScore = assessment.totalScore !== undefined && 
+                           assessment.totalScore !== null && 
+                           !isNaN(assessment.totalScore) &&
+                           assessment.totalScore >= 0 &&
+                           assessment.totalScore <= 100;
+      
+      const hasValidDuration = assessment.duration !== undefined && 
+                             assessment.duration !== null && 
+                             !isNaN(assessment.duration);
+      
+      return hasValidScore && hasValidDuration;
     });
-    return;
-  }
-  
-  // Filter out assessments with invalid scores
-  const validAssessments = history.filter(assessment => 
-    assessment.totalScore !== undefined && 
-    assessment.totalScore !== null && 
-    !isNaN(assessment.totalScore)
-  );
-  
-  if (validAssessments.length === 0) {
-    setStats({
-      averageScore: 0,
-      totalAssessments: history.length,
-      totalPracticeTime: 0,
-      streak: 0,
-      improvementAreas: [],
-      bestScore: 0,
-      recentTrend: 'stable',
-      assessmentTypes: {
-        interview: history.filter(a => a.assessmentType === 'interview').length,
-        academicViva: history.filter(a => a.assessmentType === 'academic-viva').length,
-        communicationTest: history.filter(a => a.assessmentType === 'communication-test').length,
-        knowledgeAssessment: history.filter(a => a.assessmentType === 'knowledge-assessment').length,
-        confidenceBuilding: history.filter(a => a.assessmentType === 'confidence-building').length,
-        generalPractice: history.filter(a => a.assessmentType === 'general-practice').length
-      },
-      todaySessions: 0,
-      weeklyProgress: 0
-    });
-    return;
-  }
-  
-  const totalScore = validAssessments.reduce((sum, assessment) => sum + assessment.totalScore, 0);
-  const averageScore = Math.round(totalScore / validAssessments.length);
-  const bestScore = Math.max(...validAssessments.map(i => i.totalScore));
-  
-  const totalPracticeTime = history.reduce((sum, assessment) => sum + (assessment.duration || 0), 0);
-  
-  const improvementAreas = validAssessments.length > 0 ? 
-    (validAssessments[0].summary?.improvements || []) : [];
-  
-  const streak = calculateStreak(history);
-  const recentTrend = calculateRecentTrend(validAssessments);
-  
-  // Calculate today's sessions
-  const today = new Date().toDateString();
-  const todaySessions = history.filter(assessment => 
-    new Date(assessment.date).toDateString() === today
-  ).length;
+    
+    // Calculate statistics only from valid assessments
+    const totalScore = validAssessments.reduce((sum, assessment) => sum + assessment.totalScore, 0);
+    const averageScore = validAssessments.length > 0 ? Math.round(totalScore / validAssessments.length) : 0;
+    
+    const bestScore = validAssessments.length > 0 ? 
+      Math.max(...validAssessments.map(i => i.totalScore)) : 0;
+    
+    // FIXED: Calculate total practice time in minutes
+    const totalPracticeTimeSeconds = validAssessments.reduce((sum, assessment) => sum + (assessment.duration || 0), 0);
+    const totalPracticeTimeMinutes = Math.round(totalPracticeTimeSeconds / 60);
+    
+    // FIXED: Get improvement areas from the most recent assessment
+    const improvementAreas = validAssessments.length > 0 ? 
+      (validAssessments[0].summary?.improvements || []) : [];
+    
+    const streak = calculateStreak(validAssessments);
+    const recentTrend = calculateRecentTrend(validAssessments);
+    
+    // Calculate today's sessions
+    const today = new Date().toDateString();
+    const todaySessions = validAssessments.filter(assessment => 
+      new Date(assessment.date).toDateString() === today
+    ).length;
 
-  // Calculate weekly progress (compared to last week)
-  const weeklyProgress = calculateWeeklyProgress(history);
-  
-  // Calculate assessment type distribution
-  const assessmentTypes = {
-    interview: history.filter(a => a.assessmentType === 'interview').length,
-    academicViva: history.filter(a => a.assessmentType === 'academic-viva').length,
-    communicationTest: history.filter(a => a.assessmentType === 'communication-test').length,
-    knowledgeAssessment: history.filter(a => a.assessmentType === 'knowledge-assessment').length,
-    confidenceBuilding: history.filter(a => a.assessmentType === 'confidence-building').length,
-    generalPractice: history.filter(a => a.assessmentType === 'general-practice').length
+    // Calculate weekly progress
+    const weeklyProgress = calculateWeeklyProgress(validAssessments);
+    
+    // Calculate assessment type distribution
+    const assessmentTypes = {
+      interview: validAssessments.filter(a => a.assessmentType === 'interview').length,
+      academicViva: validAssessments.filter(a => a.assessmentType === 'academic-viva').length,
+      communicationTest: validAssessments.filter(a => a.assessmentType === 'communication-test').length,
+      knowledgeAssessment: validAssessments.filter(a => a.assessmentType === 'knowledge-assessment').length,
+      confidenceBuilding: validAssessments.filter(a => a.assessmentType === 'confidence-building').length,
+      generalPractice: validAssessments.filter(a => a.assessmentType === 'general-practice').length
+    };
+    
+    setStats({
+      averageScore,
+      totalAssessments: validAssessments.length,
+      totalPracticeTime: totalPracticeTimeMinutes,
+      streak,
+      improvementAreas: improvementAreas.slice(0, 3),
+      bestScore,
+      recentTrend,
+      assessmentTypes,
+      todaySessions,
+      weeklyProgress
+    });
   };
-  
-  setStats({
-    averageScore,
-    totalAssessments: history.length,
-    totalPracticeTime: Math.round(totalPracticeTime / 60),
-    streak,
-    improvementAreas: improvementAreas.slice(0, 3),
-    bestScore,
-    recentTrend,
-    assessmentTypes,
-    todaySessions,
-    weeklyProgress
-  });
-};
 
   const calculateStreak = (history: InterviewHistory[]): number => {
     if (history.length === 0) return 0;
@@ -813,12 +651,20 @@ const calculateStatistics = (history: InterviewHistory[]) => {
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200 p-6 h-full">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-semibold text-gray-900">Recent Assessments</h3>
-                <button 
-                  onClick={forceRefresh}
-                  className="p-2 text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  <RefreshCw className="h-5 w-5" />
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setShowDebugInfo(!showDebugInfo)}
+                    className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                  >
+                    {showDebugInfo ? 'Hide Debug' : 'Show Debug'}
+                  </button>
+                  <button 
+                    onClick={forceRefresh}
+                    className="p-2 text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <RefreshCw className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
 
               {interviewHistory.length > 0 ? (
@@ -829,8 +675,8 @@ const calculateStatistics = (history: InterviewHistory[]) => {
                       className="flex items-center justify-between p-4 bg-gray-50/80 backdrop-blur-sm rounded-lg hover:bg-gray-100/80 transition-colors cursor-pointer border border-gray-200"
                       onClick={() => viewInterviewDetails(assessment)}
                     >
-                      <div className="flex items-center space-x-4">
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                      <div className="flex items-center space-x-4 min-w-0 flex-1">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
                           assessment.totalScore >= 80 ? 'bg-green-100 text-green-600' :
                           assessment.totalScore >= 60 ? 'bg-blue-100 text-blue-600' :
                           'bg-red-100 text-red-600'
@@ -852,8 +698,8 @@ const calculateStatistics = (history: InterviewHistory[]) => {
                           </p>
                         </div>
                       </div>
-                      <div className="text-right flex-shrink-0 ml-4">
-                        <div className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
+                      <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                        <div className={`px-3 py-1 text-sm font-medium rounded-full ${
                           assessment.totalScore >= 80 ? 'bg-green-100 text-green-800' :
                           assessment.totalScore >= 60 ? 'bg-yellow-100 text-yellow-800' :
                           'bg-red-100 text-red-800'
@@ -866,7 +712,7 @@ const calculateStatistics = (history: InterviewHistory[]) => {
                               e.stopPropagation();
                               playRecordedAudio(assessment);
                             }}
-                            className="text-gray-600 hover:text-blue-600 mt-1 block mx-auto transition-colors"
+                            className="text-gray-600 hover:text-blue-600 transition-colors p-1"
                             title="Play recorded assessment"
                           >
                             <Volume2 className="h-4 w-4" />
@@ -890,6 +736,51 @@ const calculateStatistics = (history: InterviewHistory[]) => {
                 </div>
               )}
             </div>
+
+            {/* Debug Information - Improved Design */}
+            {showDebugInfo && interviewHistory.length > 0 && (
+              <div className="bg-gray-900/90 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-700 p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-lg font-semibold text-white">Recent Assessment Debug Info</h4>
+                  <button 
+                    onClick={() => setShowDebugInfo(false)}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                  <div className="bg-gray-800/50 p-3 rounded-lg">
+                    <p className="text-gray-400 text-xs">Job Title</p>
+                    <p className="text-white font-medium truncate">{interviewHistory[0].jobTitle}</p>
+                  </div>
+                  <div className="bg-gray-800/50 p-3 rounded-lg">
+                    <p className="text-gray-400 text-xs">Total Score</p>
+                    <p className="text-white font-medium">{interviewHistory[0].totalScore}%</p>
+                  </div>
+                  <div className="bg-gray-800/50 p-3 rounded-lg">
+                    <p className="text-gray-400 text-xs">Duration</p>
+                    <p className="text-white font-medium">{interviewHistory[0].duration}s</p>
+                  </div>
+                  <div className="bg-gray-800/50 p-3 rounded-lg">
+                    <p className="text-gray-400 text-xs">Questions</p>
+                    <p className="text-white font-medium">{interviewHistory[0].questions?.length || 0}</p>
+                  </div>
+                  <div className="bg-gray-800/50 p-3 rounded-lg">
+                    <p className="text-gray-400 text-xs">Answers</p>
+                    <p className="text-white font-medium">{interviewHistory[0].answers?.length || 0}</p>
+                  </div>
+                  <div className="bg-gray-800/50 p-3 rounded-lg">
+                    <p className="text-gray-400 text-xs">Has Profile</p>
+                    <p className="text-white font-medium">{interviewHistory[0].profile ? 'Yes' : 'No'}</p>
+                  </div>
+                </div>
+                <div className="mt-4 p-3 bg-blue-900/20 rounded-lg border border-blue-700/50">
+                  <p className="text-blue-300 text-xs mb-2">Assessment ID:</p>
+                  <p className="text-blue-100 text-sm font-mono break-all">{interviewHistory[0].id}</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Column - Today's Progress & Quick Actions & Assessment Types */}

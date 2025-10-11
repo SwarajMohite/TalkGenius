@@ -176,3 +176,6 @@ next-env.d.ts
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 >>>>>>> bf2af8b30f1fe595beaa44ef42c589d356871fdd
+
+# clerk configuration (can include secrets)
+/.clerk/

@@ -4,7 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { ConvexClientProvider } from "./ConvexClientProvider";
 import { ClerkProvider } from "@clerk/nextjs";
-
+export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: "AI Mock Interview",
   description: "Practice interviews with AI",

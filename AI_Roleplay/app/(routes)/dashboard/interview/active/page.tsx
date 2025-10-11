@@ -4274,57 +4274,63 @@ if (error instanceof Error && error.name === 'TimeoutError') {      console.warn
   };
 
   // Complete interview function
-  const completeInterview = (
-    updatedAnswers: Answer[], 
-    newSkillProficiency: { [key: string]: number }, 
-    avgScore: number, 
-    analysis: any
-  ) => {
-    setInterviewCompleted(true);
-    setInterviewFlow('waiting-for-answer');
-    setShowCorrectedAnswer(false);
+  // FIXED: Enhanced completeInterview function with proper data structure
+const completeInterview = (
+  updatedAnswers: Answer[], 
+  newSkillProficiency: { [key: string]: number }, 
+  avgScore: number, 
+  analysis: any
+) => {
+  setInterviewCompleted(true);
+  setInterviewFlow('waiting-for-answer');
+  setShowCorrectedAnswer(false);
+  
+  const topSkills = Object.entries(newSkillProficiency)
+    .sort(([,a], [,b]) => (b as number) - (a as number))
+    .slice(0, 3)
+    .map(([skill]) => skill);
+
+  // FIXED: Create proper completed interview data
+  const completedInterview = {
+    id: `assessment-${Date.now()}`,
+    jobTitle: profile?.jobTitle || 'Talkgenious AI Assessment',
+    date: new Date().toISOString(),
+    totalScore: Math.round(avgScore),
+    questions: questions,
+    answers: updatedAnswers,
+    startTime: new Date().toISOString(), // Add start time
+    endTime: new Date().toISOString(),   // Add end time
+    duration: timeElapsed, // Use the actual elapsed time
+    type: isDynamicMode ? 'dynamic-ai-interview' : 'smart-field-specific',
+    isDynamic: isDynamicMode,
+    profile: profile, // Include the profile
+    summary: {
+      strengths: analysis?.strengths || ['Good communication skills'],
+      improvements: analysis?.improvements || ['Could use more specific examples'],
+      overallFeedback: analysis?.detailedFeedback || 'Solid performance with room for improvement'
+    },
+    // FIXED: Add assessment type detection
+    assessmentType: detectAssessmentTypeFromProfile(profile)
+  };
+  
+  // Save to localStorage
+  localStorage.setItem('completedInterview', JSON.stringify(completedInterview));
+  localStorage.removeItem('activeInterview');
+
+  // Trigger dashboard update
+  window.dispatchEvent(new Event('interviewCompleted'));
+  localStorage.setItem('interviewUpdated', Date.now().toString());
+
+  const finalMessage = analysis?.interviewerResponse || 
+    `Thank you for completing the assessment${userName ? `, ${userName}` : ''}. Your overall performance score is ${Math.round(avgScore)} percent. ` +
+    `Your strongest areas were ${topSkills.join(', ')}.`;
+  
+  speakInterviewerMessage(finalMessage);
+
+  setTimeout(() => {
+    alert(`Assessment Complete!
     
-    const topSkills = Object.entries(newSkillProficiency)
-      .sort(([,a], [,b]) => (b as number) - (a as number))
-      .slice(0, 3)
-      .map(([skill]) => skill);
-
-    const assessmentName = 'Talkgenious AI Roleplay Assessment Platform';
-
-    const completedInterview = {
-      profile,
-      questions,
-      startTime: new Date().toISOString(),
-      currentQuestionIndex: currentQuestionIndex + 1,
-      answers: updatedAnswers,
-      isActive: false,
-      type: isDynamicMode ? 'dynamic-ai-interview' : 'smart-field-specific',
-      endTime: new Date().toISOString(),
-      totalScore: avgScore,
-      duration: timeElapsed,
-      summary: {
-        strengths: analysis?.strengths || ['Good communication skills'],
-        improvements: analysis?.improvements || ['Could use more specific examples'],
-        overallFeedback: analysis?.detailedFeedback || 'Solid performance with room for improvement'
-      }
-    };
-    
-    localStorage.setItem('completedInterview', JSON.stringify(completedInterview));
-    localStorage.removeItem('activeInterview');
-
-    window.dispatchEvent(new Event('interviewCompleted'));
-    localStorage.setItem('interviewUpdated', Date.now().toString());
-
-    const finalMessage = analysis?.interviewerResponse || 
-      `Thank you for completing the ${assessmentName} session${userName ? `, ${userName}` : ''}. Your overall performance score is ${avgScore} percent. ` +
-      `Your strongest areas were ${topSkills.join(', ')}.`;
-    
-    speakInterviewerMessage(finalMessage);
-
-    setTimeout(() => {
-      alert(`${assessmentName} Complete!
-      
-Final Score: ${avgScore}%
+Final Score: ${Math.round(avgScore)}%
 Questions Answered: ${updatedAnswers.filter(a => !questions.find(q => q.id === a.questionId)?.isFollowUp).length}
 Top Skills: ${topSkills.join(', ')}
 Assessment Type: ${isDynamicMode ? 'AI-Powered Dynamic' : 'Standard'}
@@ -4334,8 +4340,28 @@ ${avgScore >= 80 ? 'Outstanding performance!' :
   'Consider practicing with more detailed examples and specific scenarios.'}
 
 Thank you for participating!`);
-    }, 3000);
-  };
+  }, 3000);
+};
+
+// FIXED: Add assessment type detection function
+const detectAssessmentTypeFromProfile = (profile: InterviewProfile | null): string => {
+  if (!profile) return 'interview';
+  
+  const jobTitle = profile.jobTitle?.toLowerCase() || '';
+  const fieldCategory = profile.fieldCategory?.toLowerCase() || '';
+  
+  if (jobTitle.includes('academic') || fieldCategory.includes('academic')) {
+    return 'academic-viva';
+  }
+  if (jobTitle.includes('communication') || fieldCategory.includes('communication')) {
+    return 'communication-test';
+  }
+  if (jobTitle.includes('technical') || fieldCategory.includes('technical')) {
+    return 'interview';
+  }
+  
+  return 'interview'; // default
+};
 
   // Fixed media initialization with better error handling
   const initializeMedia = async () => {

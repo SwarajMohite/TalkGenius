@@ -2,7 +2,6 @@
 
 const nextConfig = {
   // Add this for static export
-  output: 'export',
   trailingSlash: true,
   images: {
     unoptimized: true
