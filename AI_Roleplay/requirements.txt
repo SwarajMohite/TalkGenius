@@ -1,0 +1,16 @@
+# TalkGenius AI Roleplay Assessment Platform
+# Generated using smart hybrid approach
+
+anthropic
+fastapi
+langchain
+openai
+psycopg2-binary
+pydub==0.25.1
+python-dotenv==1.1.1
+python-jose
+python-multipart
+pytz==2025.1
+requests==2.31.0
+sqlalchemy
+uvicorn
